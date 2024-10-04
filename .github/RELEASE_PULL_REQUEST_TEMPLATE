@@ -1,7 +1,0 @@
-【DEV環境】 <%= Time.now %>
-## 📝 概要
-
-## 📌 リリース予定のPR一覧
-<% pull_requests.each do |pr| -%>
-- #<%=  pr.number %> <%= pr.mention %>
-<% end -%>
