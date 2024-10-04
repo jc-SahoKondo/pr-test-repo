@@ -1,0 +1,47 @@
+name: Close Issues on Parent Branch Merge
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  close_issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Extract merged PRs
+        id: extract_prs
+        run: |
+          git log --pretty=format:"%s%n%b" HEAD^..HEAD > messages.txt
+
+      - name: Close Issues from Merged PRs
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const messages = fs.readFileSync('messages.txt', 'utf8');
+            const issuePattern = /fix:\s*#(\d+)/gi;
+            let issuesToClose = new Set();
+
+            // コミットメッセージとPRの説明文からIssue番号を摘出
+            let match;
+            while ((match = issuePattern.exec(messages)) !== null) {
+              issuesToClose.add(match[2]);
+            }
+
+            // 親Issueをクローズ
+            for (const issueNumber of issuesToClose) for (const issueNumber of issuesToClose) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                state: 'closed',
+              });
+              console.log(`Closed issue #${issueNumber}`);
+            }
