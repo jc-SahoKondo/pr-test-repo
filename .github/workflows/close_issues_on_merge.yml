@@ -3,7 +3,7 @@ name: Close Issues on Parent Branch Merge
 on:
   push:
     branches:
-      - main
+      - develop
 
 jobs:
   close_issues:
