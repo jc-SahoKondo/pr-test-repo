@@ -1,4 +1,4 @@
-name: Sync Issue MileStone
+name: Set Milestone From Linked Issue
 
 on:
   issues:
@@ -9,63 +9,61 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v3
+    - name: Check out repository
+      uses: actions/checkout@v3
 
-      - name: Extract linked issue
-        id: extract_issue
-        run: |
-          # Issueの本文からリンクされたIssueの番号を抽出
-          ISSUE_BODY="${{ github.event.issue.body }}"
-          LINKED_ISSUE=$(echo "$ISSUE_BODY" | grep -oP '#\d+')
-          echo "Linked issue: $LINKED_ISSUE"
+    - name: Extract issue links and set milestone
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issue = context.payload.issue;
+          if (!issue) {
+            throw new Error("Issue payload is not available.");
+          }
+          const body = issue.body;
+          if (!body) {
+            throw new Error("Issue body is empty.");
+          }
 
-          # もしリンクされたIssueが見つからない場合は終了
-          if [ -z "$LINKED_ISSUE" ]; then
-            echo "No linked issue found. Exiting..."
-            exit 0
-          fi
+          // 正規表現を使って本文からissueリンクを抽出
+          const issueLinks = [...body.matchAll(/マージ先: #(\d+)/g)];
+          if (issueLinks.length === 0) {
+            console.log("No linked issues found in the body.");
+            return;
+          }
 
-          # リンクされたIssue番号をEnvironment Fileに保存
-          echo "linked_issue_number=${LINKED_ISSUE:1}" >> $GITHUB_ENV
+          let milestoneToSet = null;
+          
+          // 各リンクされたissueのmilestoneを取得
+          for (const link of issueLinks) {
+            const linkedIssueNumber = link[1];
+            try {
+              const { data: linkedIssue } = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: linkedIssueNumber,
+              });
 
-      - name: Get linked issue milestone
-        id: get_milestone
-        run: |
-          LINKED_ISSUE_NUMBER=${{ env.linked_issue_number }}
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/$LINKED_ISSUE_NUMBER")
+              // 最初に見つかったmilestoneを設定
+              if (linkedIssue.milestone) {
+                milestoneToSet = linkedIssue.milestone.number;
+                console.log(`Found milestone: ${linkedIssue.milestone.title}`);
+                break;  // 最初に見つかったmilestoneで設定
+              }
+            } catch (error) {
+              console.error(`Failed to fetch linked issue #${linkedIssueNumber}:`, error);
+            }
+          }
 
-          # リンクされたIssueのマイルストーンを抽出
-          MILESTONE_TITLE=$(echo "$RESPONSE" | jq -r '.milestone.title')
-          echo "Milestone title: $MILESTONE_TITLE"
-
-          # マイルストーンが設定されていない場合は終了
-          if [ "$MILESTONE_TITLE" == "null" ]; then
-            echo "No milestone found for the linked issue. Exiting..."
-            exit 0
-          fi
-
-          # マイルストーンタイトルをEnvironment Fileに保存
-          echo "milestone_title=$MILESTONE_TITLE" >> $GITHUB_ENV
-
-      - name: Get milestone ID by title
-        id: get_milestone_id
-        run: |
-          MILESTONE_TITLE=${{ env.milestone_title }}
-          MILESTONE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/milestones" \
-            | jq -r ".[] | select(.title==\"$MILESTONE_TITLE\") | .number")
-          echo "Milestone ID: $MILESTONE_ID"
-
-          # マイルストーンIDをEnvironment Fileに保存
-          echo "milestone_id=$MILESTONE_ID" >> $GITHUB_ENV
-
-      - name: Set milestone for the current issue
-        run: |
-          MILESTONE_ID=${{ env.milestone_id }}
-          ISSUE_NUMBER=${{ github.event.issue.number }}
-          curl -s -X PATCH -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER \
-            -d "{\"milestone\": $MILESTONE_ID}"
+          // 現在のissueにmilestoneを設定
+          if (milestoneToSet) {
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              milestone: milestoneToSet,
+            });
+            console.log(`Milestone set to issue #${issue.number}.`);
+          } else {
+            console.log("No milestone found to set.");
+          }
