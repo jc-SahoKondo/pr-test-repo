@@ -29,26 +29,6 @@ jobs:
           # リンクされたIssue番号を保存
           echo "::set-output name=linked_issue_number::${LINKED_ISSUE:1}"
 
-      - name: Get linked issue labels
-        id: get_labels
-        run: |
-          LINKED_ISSUE_NUMBER=${{ steps.extract_issue.outputs.linked_issue_number }}
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/$LINKED_ISSUE_NUMBER")
-
-          # リンクされたIssueのラベルを抽出
-          LABELS=$(echo "$RESPONSE" | jq -r '.labels[].name')
-          echo "Labels: $LABELS"
-
-          # ラベルが設定されていない場合は終了
-          if [ -z "$LABELS" ]; then
-            echo "No labels found for the linked issue. Exiting..."
-            exit 0
-          fi
-
-          # ラベルリストを出力
-          echo "::set-output name=labels::$(echo $LABELS | jq -R . | jq -s .)"
-
       - name: Get linked issue milestone
         id: get_milestone
         run: |
@@ -87,14 +67,3 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER \
             -d "{\"milestone\": $MILESTONE_ID}"
-
-      - name: Add labels to the current issue
-        run: |
-          LABELS=${{ steps.get_labels.outputs.labels }}
-          ISSUE_NUMBER=${{ github.event.issue.number }}
-
-          # 現在のIssueにラベルを追加
-          curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER/labels \
-            -d "{\"labels\": $LABELS}"
