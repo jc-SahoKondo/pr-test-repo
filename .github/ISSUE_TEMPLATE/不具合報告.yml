@@ -1,0 +1,32 @@
+name: 不具合報告
+description: 不具合報告用テンプレート
+title: "[BUG] # "
+
+body:
+  - type: input
+    id: title
+    attributes:
+      label: 概要
+      description: バグ内容の簡単な説明を入力してください
+      placeholder: バグ内容の簡単な説明
+    validations:
+      required: false
+  
+  - type: input
+    id: ref-issue
+    attributes:
+      label: マージ先
+      description: マージ先のIssue番号を入力してください
+      placeholder: マージ先のIssue番号
+      value: #
+    validations:
+      required: true
+
+  - type: input
+    id: ref-ticket
+    attributes:
+      label: Redmine
+      description: Redmineのリンクを入力してください
+      placeholder: Redmineのリンク
+    validations:
+      required: true
