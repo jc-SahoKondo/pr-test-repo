@@ -8,14 +8,14 @@ on:
 jobs:
   update-issue:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
+    if: ${{ github.event.pull_request.merged == true }}
 
-  steps:
+    steps:
     - name: Check out repository
       uses: actions/checkout@v3
 
     - name: Update issue after PR is merged
-      uses: actions/github-script@v6
+      uses: actions/github-script@v7
       with:
         script: |
           const pr = context.payload.pull_request;
@@ -118,7 +118,7 @@ jobs:
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: parentIssueNumber,
-            body: issueBody,
+            body: parentIssueBody,
           });
 
           console.log(`Issue #${parentIssueNumber} updated with link to Issue #${fixedIssueNumber}.`);
