@@ -17,11 +17,18 @@ jobs:
       with:
         script: |
           const issue = context.payload.issue;
+          if (!issue) {
+            throw new Error("Issue payload is not available.");
+          }
           const body = issue.body;
+          if (!body) {
+            throw new Error("Issue body is empty.");
+          }
 
           // 正規表現を使って本文からissueリンクを抽出
           const issueLinks = [...body.matchAll(/#(\d+)/g)];
           if (issueLinks.length === 0) {
+            console.log("No linked issues found in the body.");
             return;
           }
 
@@ -30,22 +37,28 @@ jobs:
           // 各リンクされたissueのラベルを取得
           for (const link of issueLinks) {
             const linkedIssueNumber = link[1];
-            const { data: linkedIssue } = await github.issues.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: linkedIssueNumber,
-            });
+            try {
+              const { data: linkedIssue } = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: linkedIssueNumber,
+              });
 
-            // すべてのラベルをセットに追加
-            linkedIssue.labels.forEach(label => labelsToAdd.add(label.name));
+              // すべてのラベルをセットに追加
+              linkedIssue.labels.forEach(label => labelsToAdd.add(label.name));
+            } catch (error) {
+              console.error(`Failed to fetch linked issue #${linkedIssueNumber}:`, error);
+            }
           }
 
           // 現在のissueにラベルを追加
           if (labelsToAdd.size > 0) {
-            await github.issues.addLabels({
+            await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issue.number,
               labels: Array.from(labelsToAdd),
             });
+          } else {
+            console.log("No labels to add.");
           }
