@@ -1,0 +1,69 @@
+name: Sync Issue MileStone
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  set-milestone:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Extract linked issue
+        id: extract_issue
+        run: |
+          # Issueの本文からリンクされたIssueの番号を抽出
+          ISSUE_BODY="${{ github.event.issue.body }}"
+          LINKED_ISSUE=$(echo "$ISSUE_BODY" | grep -oP '#\d+')
+          echo "Linked issue: $LINKED_ISSUE"
+
+          # もしリンクされたIssueが見つからない場合は終了
+          if [ -z "$LINKED_ISSUE" ]; then
+            echo "No linked issue found. Exiting..."
+            exit 0
+          fi
+
+          # リンクされたIssue番号を保存
+          echo "::set-output name=linked_issue_number::${LINKED_ISSUE:1}"
+
+      - name: Get linked issue milestone
+        id: get_milestone
+        run: |
+          LINKED_ISSUE_NUMBER=${{ steps.extract_issue.outputs.linked_issue_number }}
+          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/$LINKED_ISSUE_NUMBER")
+
+          # リンクされたIssueのマイルストーンを抽出
+          MILESTONE_TITLE=$(echo "$RESPONSE" | jq -r '.milestone.title')
+          echo "Milestone title: $MILESTONE_TITLE"
+
+          # マイルストーンが設定されていない場合は終了
+          if [ "$MILESTONE_TITLE" == "null" ]; then
+            echo "No milestone found for the linked issue. Exiting..."
+            exit 0
+          fi
+
+          # マイルストーンタイトルを保存
+          echo "::set-output name=milestone_title::${MILESTONE_TITLE}"
+
+      - name: Get milestone ID by title
+        id: get_milestone_id
+        run: |
+          MILESTONE_TITLE=${{ steps.get_milestone.outputs.milestone_title }}
+          MILESTONE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/milestones" \
+            | jq -r ".[] | select(.title==\"$MILESTONE_TITLE\") | .number")
+          echo "Milestone ID: $MILESTONE_ID"
+          echo "::set-output name=milestone_id::${MILESTONE_ID}"
+
+      - name: Set milestone for the current issue
+        run: |
+          MILESTONE_ID=${{ steps.get_milestone_id.outputs.milestone_id }}
+          ISSUE_NUMBER=${{ github.event.issue.number }}
+          curl -s -X PATCH -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER \
+            -d "{\"milestone\": $MILESTONE_ID}"
