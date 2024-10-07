@@ -1,0 +1,72 @@
+name: Update Phase and Create Label
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase_name:
+        description: 'フェーズ名'
+        required: true
+      start_date:
+        description: 'フェーズ開始日 (yyyy/MM/dd形式)'
+        required: true
+      end_date:
+        description: 'フェーズ終了日 (yyyy/MM/dd形式)'
+        required: true
+
+jobs:
+  update-phase-and-create-label:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+
+    - name: Install js-yaml
+      run: |
+        npm install js-yaml
+
+    - name: Update phase.yml
+      id: update_phase_yml
+      run: |
+        PHASE_NAME="${{ github.event.inputs.phase_name }}"
+        START_DATE="${{ github.event.inputs.start_date }}"
+        END_DATE="${{ github.event.inputs.end_date }}"
+        
+        # Load existing phase.yml
+        if [ ! -f .github/phase.yml ]; then
+          echo "{}" > .github/phase.yml
+        fi
+        PHASE_YAML=$(cat .github/phase.yml)
+
+        # Check if the phase already exists
+        if echo "$PHASE_YAML" | grep -q "$PHASE_NAME:"; then
+          echo "フェーズ名 '$PHASE_NAME' は既に存在します。更新をスキップします。"
+          exit 1
+        fi
+
+        # Append new phase to phase.yml
+        echo "$PHASE_NAME:\n  start: '$START_DATE'\n  end: '$END_DATE'\n" >> .github/phase.yml
+
+        # Confirm the update
+        echo "Updated phase.yml with $PHASE_NAME"
+
+    - name: Commit and Push phase.yml changes
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add .github/phase.yml
+        git commit -m "Update phase.yml with ${{ github.event.inputs.phase_name }}"
+        git push origin HEAD
+
+    - name: Create new label in the repository
+      id: create_label
+      run: |
+        PHASE_NAME="${{ github.event.inputs.phase_name }}"
+        
+        # Create a new label in the GitHub repository
+        gh api repos/${{ github.repository }}/labels \
+          -X POST \
+          -f name="$PHASE_NAME" \
+          -f color="B60205"  # 色は必要に応じて変更可能
+
+        echo "Created label: $PHASE_NAME"
