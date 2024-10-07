@@ -26,7 +26,7 @@ jobs:
           }
 
           // 正規表現を使って本文からissueリンクを抽出
-          const issueLinks = [...body.matchAll(/#(\d+)/g)];
+          const issueLinks = [...body.matchAll(/マージ先: #(\d+)/g)];
           if (issueLinks.length === 0) {
             console.log("No linked issues found in the body.");
             return;
