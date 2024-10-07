@@ -51,6 +51,8 @@ jobs:
         echo "Updated phase.yml with $PHASE_NAME"
 
     - name: Commit and Push phase.yml changes
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -59,6 +61,8 @@ jobs:
         git push origin HEAD
 
     - name: Create new label in the repository
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       id: create_label
       run: |
         PHASE_NAME="${{ github.event.inputs.phase_name }}"
