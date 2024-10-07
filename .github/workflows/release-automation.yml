@@ -58,7 +58,7 @@ jobs:
       id: create_milestone
       run: |
         RELEASE_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
-        MILESTONE_NAME="${RELEASE_MONTH} リリース対応"
+        MILESTONE_NAME="${RELEASE_MONTH}リリース対応"
 
         # ISO 8601形式のリリース日を取得
         RELEASE_DATE=$(date -d "${{ github.event.inputs.release_date }}" --utc +'%Y-%m-%dT23:59:59Z')
