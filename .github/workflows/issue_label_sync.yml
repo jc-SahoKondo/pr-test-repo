@@ -8,6 +8,12 @@ jobs:
   sync-labels:
     runs-on: ubuntu-latest
 
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # GitHubトークンを環境変数として定義
+      REPO: ${{ github.repository }}  # リポジトリ名を環境変数に保存
+      ISSUE_NUMBER: ${{ github.event.issue.number }}  # 現在のIssue番号
+      ISSUE_BODY: ${{ github.event.issue.body }}  # 現在のIssueの本文
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
@@ -16,7 +22,6 @@ jobs:
         id: extract_issue
         run: |
           # Issueの本文からリンクされたIssueの番号を抽出
-          ISSUE_BODY="${{ github.event.issue.body }}"
           LINKED_ISSUE=$(echo "$ISSUE_BODY" | grep -oP '#\d+')
           echo "Linked issue: $LINKED_ISSUE"
 
@@ -26,15 +31,15 @@ jobs:
             exit 0
           fi
 
-          # リンクされたIssue番号を保存
-          echo "::set-output name=linked_issue_number::${LINKED_ISSUE:1}"
+          # リンクされたIssue番号をEnvironment Fileに保存
+          echo "linked_issue_number=${LINKED_ISSUE:1}" >> $GITHUB_ENV
 
       - name: Get linked issue labels
         id: get_labels
         run: |
           LINKED_ISSUE_NUMBER=${{ steps.extract_issue.outputs.linked_issue_number }}
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/$LINKED_ISSUE_NUMBER")
+          RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/issues/$LINKED_ISSUE_NUMBER")
 
           # リンクされたIssueのラベルを抽出
           LABELS=$(echo "$RESPONSE" | jq -r '.labels[].name')
@@ -46,16 +51,16 @@ jobs:
             exit 0
           fi
 
-          # ラベルリストを出力
-          echo "::set-output name=labels::$(echo $LABELS | jq -R . | jq -s .)"
+          # ラベルリストをEnvironment Fileに出力
+          echo "labels=$(echo $LABELS | jq -R . | jq -s .)" >> $GITHUB_ENV
 
       - name: Add labels to the current issue
         run: |
-          LABELS=${{ steps.get_labels.outputs.labels }}
-          ISSUE_NUMBER=${{ github.event.issue.number }}
+          LABELS=${{ env.labels }}
+          ISSUE_NUMBER=${{ env.ISSUE_NUMBER }}
 
           # 現在のIssueにラベルを追加
-          curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER/labels \
+            https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/labels \
             -d "{\"labels\": $LABELS}"
