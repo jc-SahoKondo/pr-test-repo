@@ -1,4 +1,4 @@
-name: Release Automation
+name: リリース日から、Issueとブランチを作成
 
 on:
   workflow_dispatch:
@@ -12,14 +12,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check out repository
+    - name: リポジトリをチェックアウト
       uses: actions/checkout@v3
 
-    - name: Install js-yaml
+    - name: js-yamlをインストール
       run: |
         npm install js-yaml
 
-    - name: Determine Phase from phase.yml
+    - name: phase.ymlからフェーズを取得
       id: determine_phase
       uses: actions/github-script@v7
       with:
@@ -52,7 +52,9 @@ jobs:
           console.log(`フェーズ: ${phaseName}`);
           return { phase: phaseName };
 
-    - name: Create Milestone
+    - name: マイルストーンを作成
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       id: create_milestone
       run: |
         RELEASE_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
@@ -65,7 +67,7 @@ jobs:
         MILESTONE_NUMBER=$(echo "$RESPONSE" | jq -r '.number')
         echo "milestone_number=$MILESTONE_NUMBER" >> $GITHUB_ENV
 
-    - name: Create Issue
+    - name: Issueを作成
       id: create_issue
       run: |
         RELEASE_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
@@ -80,7 +82,7 @@ jobs:
         ISSUE_NUMBER=$(echo "$RESPONSE" | grep -oP '(?<=#)\d+')
         echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_ENV
 
-    - name: Create New Branch from develop
+    - name: 新規ブランチを作成
       run: |
         RELEASE_YEAR_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
         BRANCH_NAME="#${{ steps.create_issue.outputs.issue_number }}_${RELEASE_YEAR_MONTH}_release"
@@ -88,7 +90,7 @@ jobs:
         git push origin "$BRANCH_NAME"
         echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
 
-    - name: Create PR
+    - name: develop向きのPRを作成
       id: create_pr
       run: |
         RELEASE_YEAR_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
@@ -104,7 +106,7 @@ jobs:
         PR_NUMBER=$(echo "$RESPONSE" | grep -oP '(?<=#)\d+')
         echo "pr_number=$PR_NUMBER" >> $GITHUB_ENV
 
-    - name: Update Issue with PR link
+    - name: Issueにdevelop向きのPRを追記
       run: |
         ISSUE_BODY=$(gh issue view ${{ steps.create_issue.outputs.issue_number }} --json body --jq '.body')
         UPDATED_BODY=$(echo "$ISSUE_BODY" | sed "s/- dev:/- dev: #${{ steps.create_pr.outputs.pr_number }}/")
