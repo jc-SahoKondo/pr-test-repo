@@ -67,7 +67,7 @@ jobs:
           -X POST \
           -F title="$MILESTONE_NAME" \
           -F due_on="$RELEASE_DATE" \
-          /repos/$GITHUB_REPOSITORY/milestones)
+          /repos/${{ github.repository }}/milestones)
         MILESTONE_NUMBER=$(echo "$RESPONSE" | jq -r '.number')
         echo "milestone_number=$MILESTONE_NUMBER" >> $GITHUB_ENV
 
@@ -77,12 +77,16 @@ jobs:
         RELEASE_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
         ISSUE_TITLE="${RELEASE_MONTH}対応"
         ISSUE_BODY="# PRs\n\n- dev:\n- stg:\n- prd:\n\n# 対応内容"
+        PHASE_LABEL="${{ steps.determine_phase.outputs.phase }}"
+        MILESTONE_NUMBER=${{ steps.create_milestone.outputs.milestone_number }}
+
+        # Issueを作成
         RESPONSE=$(gh issue create \
           --title "$ISSUE_TITLE" \
           --body "$ISSUE_BODY" \
-          --label "${{ steps.determine_phase.outputs.phase }}" \
-          --milestone ${{ steps.create_milestone.outputs.milestone_number }} \
-          --repo $GITHUB_REPOSITORY)
+          --label "$PHASE_LABEL" \
+          --milestone "$MILESTONE_NUMBER" \
+          --repo "${{ github.repository }}")
         ISSUE_NUMBER=$(echo "$RESPONSE" | grep -oP '(?<=#)\d+')
         echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_ENV
 
@@ -106,7 +110,7 @@ jobs:
           --head ${{ steps.create_new_branch.outputs.branch_name }} \
           --milestone ${{ steps.create_milestone.outputs.milestone_number }} \
           --label "${{ steps.determine_phase.outputs.phase }}" \
-          --repo $GITHUB_REPOSITORY)
+          --repo "${{ github.repository }}")
         PR_NUMBER=$(echo "$RESPONSE" | grep -oP '(?<=#)\d+')
         echo "pr_number=$PR_NUMBER" >> $GITHUB_ENV
 
