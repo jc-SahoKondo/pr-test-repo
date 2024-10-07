@@ -1,0 +1,111 @@
+name: Release Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_date:
+        description: 'リリース日 (yyyy/MM/dd形式)'
+        required: true
+
+jobs:
+  release-job:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+
+    - name: Install js-yaml
+      run: |
+        npm install js-yaml
+
+    - name: Determine Phase from phase.yml
+      id: determine_phase
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const yaml = require('js-yaml');
+          const releaseDate = new Date('${{ github.event.inputs.release_date }}');
+
+          // phase.ymlを読み込む
+          const phaseFile = fs.readFileSync('.github/phase.yml', 'utf8');
+          const phases = yaml.load(phaseFile);
+
+          let phaseName = '';
+          
+          // 各フェーズを確認して、リリース日がその範囲にあるかを判定
+          for (const [name, period] of Object.entries(phases)) {
+            const startDate = new Date(period.start);
+            const endDate = new Date(period.end);
+
+            if (releaseDate >= startDate && releaseDate <= endDate) {
+              phaseName = name;
+              break;
+            }
+          }
+
+          if (!phaseName) {
+            throw new Error('該当するフェーズが見つかりません。');
+          }
+
+          console.log(`フェーズ: ${phaseName}`);
+          return { phase: phaseName };
+
+    - name: Create Milestone
+      id: create_milestone
+      run: |
+        RELEASE_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
+        MILESTONE_NAME="${RELEASE_MONTH} リリース対応"
+        RESPONSE=$(gh api \
+          -X POST \
+          -F title="$MILESTONE_NAME" \
+          -F due_on="${{ github.event.inputs.release_date }}T23:59:59Z" \
+          /repos/$GITHUB_REPOSITORY/milestones)
+        MILESTONE_NUMBER=$(echo "$RESPONSE" | jq -r '.number')
+        echo "milestone_number=$MILESTONE_NUMBER" >> $GITHUB_ENV
+
+    - name: Create Issue
+      id: create_issue
+      run: |
+        RELEASE_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
+        ISSUE_TITLE="${RELEASE_MONTH}対応"
+        ISSUE_BODY="# PRs\n\n- dev:\n- stg:\n- prd:\n\n# 対応内容"
+        RESPONSE=$(gh issue create \
+          --title "$ISSUE_TITLE" \
+          --body "$ISSUE_BODY" \
+          --label "${{ steps.determine_phase.outputs.phase }}" \
+          --milestone ${{ steps.create_milestone.outputs.milestone_number }} \
+          --repo $GITHUB_REPOSITORY)
+        ISSUE_NUMBER=$(echo "$RESPONSE" | grep -oP '(?<=#)\d+')
+        echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_ENV
+
+    - name: Create New Branch from develop
+      run: |
+        RELEASE_YEAR_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
+        BRANCH_NAME="#${{ steps.create_issue.outputs.issue_number }}_${RELEASE_YEAR_MONTH}_release"
+        git checkout -b "$BRANCH_NAME" origin/develop
+        git push origin "$BRANCH_NAME"
+        echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
+
+    - name: Create PR
+      id: create_pr
+      run: |
+        RELEASE_YEAR_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
+        PR_TITLE="【dev環境】 $RELEASE_YEAR_MONTH"
+        RESPONSE=$(gh pr create \
+          --title "$PR_TITLE" \
+          --body "このPRはリリース対応です" \
+          --base develop \
+          --head ${{ steps.create_new_branch.outputs.branch_name }} \
+          --milestone ${{ steps.create_milestone.outputs.milestone_number }} \
+          --label "${{ steps.determine_phase.outputs.phase }}" \
+          --repo $GITHUB_REPOSITORY)
+        PR_NUMBER=$(echo "$RESPONSE" | grep -oP '(?<=#)\d+')
+        echo "pr_number=$PR_NUMBER" >> $GITHUB_ENV
+
+    - name: Update Issue with PR link
+      run: |
+        ISSUE_BODY=$(gh issue view ${{ steps.create_issue.outputs.issue_number }} --json body --jq '.body')
+        UPDATED_BODY=$(echo "$ISSUE_BODY" | sed "s/- dev:/- dev: #${{ steps.create_pr.outputs.pr_number }}/")
+        gh issue edit ${{ steps.create_issue.outputs.issue_number }} --body "$UPDATED_BODY"
