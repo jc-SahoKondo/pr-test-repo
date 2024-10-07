@@ -18,59 +18,80 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check out repository
+    - name: リポジトリをチェックアウト
       uses: actions/checkout@v3
 
-    - name: Install js-yaml
+    - name: js-yamlをインストール
       run: |
         npm install js-yaml
 
-    - name: Update phase.yml
+    - name: phase.ymlを更新
       id: update_phase_yml
       run: |
         PHASE_NAME="${{ github.event.inputs.phase_name }}"
         START_DATE="${{ github.event.inputs.start_date }}"
         END_DATE="${{ github.event.inputs.end_date }}"
         
-        # Load existing phase.yml
+        # 既存のphase.ymlを読み込む
         if [ ! -f .github/phase.yml ]; then
           echo "{}" > .github/phase.yml
         fi
-        PHASE_YAML=$(cat .github/phase.yml)
 
-        # Check if the phase already exists
-        if echo "$PHASE_YAML" | grep -q "$PHASE_NAME:"; then
+        # フェーズ名がすでに存在するか確認
+        if grep -q "$PHASE_NAME:" .github/phase.yml; then
           echo "フェーズ名 '$PHASE_NAME' は既に存在します。更新をスキップします。"
           exit 1
         fi
 
-        # Append new phase to phase.yml
-        echo "$PHASE_NAME:\n  start: '$START_DATE'\n  end: '$END_DATE'\n" >> .github/phase.yml
+        # 正しい改行を含めて新しいフェーズをphase.ymlに追記
+        echo -e "$PHASE_NAME:\n  start: '$START_DATE'\n  end: '$END_DATE'\n" >> .github/phase.yml
 
-        # Confirm the update
-        echo "Updated phase.yml with $PHASE_NAME"
+        # 更新内容を確認
+        echo "フェーズ '$PHASE_NAME' をphase.ymlに追加しました"
 
-    - name: Commit and Push phase.yml changes
+    - name: 変更をコミットしてプル
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        # リモートリポジトリから最新の変更をプル
+        git pull origin main --rebase
+
+        # 変更を追加してコミット
         git add .github/phase.yml
-        git commit -m "Update phase.yml with ${{ github.event.inputs.phase_name }}"
+        git commit -m "フェーズ '$PHASE_NAME' をphase.ymlに追加しました"
+
+    - name: リポジトリに変更をプッシュ
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # 変更をプッシュ
         git push origin HEAD
 
-    - name: Create new label in the repository
+    - name: ラベルが存在するか確認
+      id: check_label
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        PHASE_NAME="${{ github.event.inputs.phase_name }}"
+        
+        # ラベルが既に存在するか確認
+        gh api repos/${{ github.repository }}/labels/$PHASE_NAME || echo "ラベルは存在しません"
+
+    - name: ラベルが存在しない場合のみ新規作成
+      if: steps.check_label.outcome != 'success'  # ラベルが存在しない場合のみ作成
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       id: create_label
       run: |
         PHASE_NAME="${{ github.event.inputs.phase_name }}"
         
-        # Create a new label in the GitHub repository
+        # 新しいラベルをリポジトリに作成
         gh api repos/${{ github.repository }}/labels \
           -X POST \
           -f name="$PHASE_NAME" \
-          -f color="B60205"  # 色は必要に応じて変更可能
+          -f color="B60205"  # 必要に応じて色を変更可能
 
-        echo "Created label: $PHASE_NAME"
+        echo "ラベル '$PHASE_NAME' を作成しました"
