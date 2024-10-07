@@ -59,10 +59,14 @@ jobs:
       run: |
         RELEASE_MONTH=$(date -d "${{ github.event.inputs.release_date }}" +'%Y/%m')
         MILESTONE_NAME="${RELEASE_MONTH} リリース対応"
+
+        # ISO 8601形式のリリース日を取得
+        RELEASE_DATE=$(date -d "${{ github.event.inputs.release_date }}" --utc +'%Y-%m-%dT23:59:59Z')
+
         RESPONSE=$(gh api \
           -X POST \
           -F title="$MILESTONE_NAME" \
-          -F due_on="${{ github.event.inputs.release_date }}T23:59:59Z" \
+          -F due_on="$RELEASE_DATE" \
           /repos/$GITHUB_REPOSITORY/milestones)
         MILESTONE_NUMBER=$(echo "$RESPONSE" | jq -r '.number')
         echo "milestone_number=$MILESTONE_NUMBER" >> $GITHUB_ENV
