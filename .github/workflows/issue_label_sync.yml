@@ -37,7 +37,7 @@ jobs:
       - name: Get linked issue labels
         id: get_labels
         run: |
-          LINKED_ISSUE_NUMBER=${{ steps.extract_issue.outputs.linked_issue_number }}
+          LINKED_ISSUE_NUMBER=${{ env.linked_issue_number }}
           RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/$REPO/issues/$LINKED_ISSUE_NUMBER")
 
