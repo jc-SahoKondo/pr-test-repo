@@ -89,21 +89,21 @@ jobs:
           // 親Issueの本文を取得
           let parentIssueBody = parentIssueData.data.body;
 
-          // "## 対応一覧" の位置を探す
-          const 対応一覧Index = parentIssueBody.indexOf("## 対応一覧");
+          // "# 対応一覧" の位置を探す
+          const 対応一覧Index = parentIssueBody.indexOf("# 対応一覧");
 
           if (対応一覧Index === -1) {
-            // "## 対応一覧" が存在しない場合、新しくセクションを作成
-            parentIssueBody += "\n\n## 対応一覧\n";
+            // "# 対応一覧" が存在しない場合、新しくセクションを作成
+            parentIssueBody += "\n\n# 対応一覧\n";
           }
 
           // PRで対応されたIssueのリンク形式を追加
           const newEntry = `- #${fixedIssueNumber}`;
 
-          // "## 対応一覧" に既にリンクがある場合、それをチェックして同じ行の下に追加
+          // "# 対応一覧" に既にリンクがある場合、それをチェックして同じ行の下に追加
           const 対応一覧Section = parentIssueBody.substring(対応一覧Index);
           if (!対応一覧Section.includes(newEntry)) {
-            // "## 対応一覧" セクションが見つかった場合、既存の項目の下に追加
+            // "# 対応一覧" セクションが見つかった場合、既存の項目の下に追加
             const 対応一覧Lines = 対応一覧Section.split("\n");
             let insertionIndex = 対応一覧Lines.findIndex(line => line.startsWith("- #"));
             if (insertionIndex === -1) {
