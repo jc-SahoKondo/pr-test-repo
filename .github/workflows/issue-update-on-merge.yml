@@ -1,0 +1,125 @@
+name: Update Issue on PR Merge
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  update-issue:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+
+  steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+
+    - name: Update issue after PR is merged
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const pr = context.payload.pull_request;
+          const prBody = pr.body;
+          const prNumber = pr.number;
+          const prTitle = pr.title;
+
+          if (!prBody) {
+            console.log("PR body is empty.");
+            return;
+          }
+
+          // PR本文から "Fixed: #" に続くIssue番号を取得
+          const fixedIssueMatch = prBody.match(/Fixed: #(\d+)/);
+          if (!fixedIssueMatch) {
+            console.log("No issue found in PR body.");
+            return;
+          }
+
+          const fixedIssueNumber = fixedIssueMatch[1];
+
+          // 取得したIssueの情報を取得
+          let fixedIssueData;
+          try {
+            fixedIssueData = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: fixedIssueNumber,
+            });
+          } catch (error) {
+            console.error(`Failed to fetch issue #${fixedIssueNumber}:`, error);
+            return;
+          }
+
+          // 取得したIssueとPRのラベルを更新
+          const updatedLabels = fixedIssueData.data.labels.map(label => label.name).filter(label => label !== "ready to review");
+          updatedLabels.push("fixed");
+
+          await github.rest.issues.update({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: fixedIssueNumber,
+            labels: updatedLabels
+          });
+
+          // Issueの本文を取得
+          let fixedIssueBody = fixedIssueData.data.body;
+
+          // Issue本文から親Issue番号を取得
+          const parentIssueMatch = fixedIssueBody.match(/#(\d+)/);
+          if (!parentIssueMatch) {
+            console.log("No parent issue found in Issue body.");
+            return;
+          }
+
+          const parentIssueNumber = parentIssueMatch[1];
+
+          // 取得した親Issueの情報を取得
+          let parentIssueData;
+          try {
+            parentIssueData = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parentIssueNumber,
+            });
+          } catch (error) {
+            console.error(`Failed to fetch issue #${parentIssueNumber}:`, error);
+            return;
+          }
+
+          // 親Issueの本文を取得
+          let parentIssueBody = parentIssueData.data.body;
+
+          // "## 対応一覧" の位置を探す
+          const 対応一覧Index = parentIssueBody.indexOf("## 対応一覧");
+
+          if (対応一覧Index === -1) {
+            // "## 対応一覧" が存在しない場合、新しくセクションを作成
+            parentIssueBody += "\n\n## 対応一覧\n";
+          }
+
+          // PRで対応されたIssueのリンク形式を追加
+          const newEntry = `- #${fixedIssueNumber}`;
+
+          // "## 対応一覧" に既にリンクがある場合、それをチェックして同じ行の下に追加
+          const 対応一覧Section = parentIssueBody.substring(対応一覧Index);
+          if (!対応一覧Section.includes(newEntry)) {
+            // "## 対応一覧" セクションが見つかった場合、既存の項目の下に追加
+            const 対応一覧Lines = 対応一覧Section.split("\n");
+            let insertionIndex = 対応一覧Lines.findIndex(line => line.startsWith("- #"));
+            if (insertionIndex === -1) {
+              insertionIndex =対応一覧Lines.length;
+            }
+            対応一覧Lines.splice(insertionIndex + 1, 0, newEntry);
+            parentIssueBody = parentIssueBody.substring(0, 対応一覧Index) + 対応一覧Lines.join("\n");
+          }
+
+          // 親Issueの本文を更新
+          await github.rest.issues.update({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: parentIssueNumber,
+            body: issueBody,
+          });
+
+          console.log(`Issue #${parentIssueNumber} updated with link to Issue #${fixedIssueNumber}.`);
+          
