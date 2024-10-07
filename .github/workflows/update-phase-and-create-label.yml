@@ -49,24 +49,24 @@ jobs:
         # 更新内容を確認
         echo "フェーズ '$PHASE_NAME' をphase.ymlに追加しました"
 
-    - name: 変更をコミットしてプル
+    - name: リモートの変更をプルしてリベース
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
 
-        # リモートリポジトリから最新の変更をプル
+        # リモートリポジトリから最新の変更をプルし、リベース
         git pull origin main --rebase
 
+    - name: 変更をコミットしてプッシュ
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
         # 変更を追加してコミット
         git add .github/phase.yml
         git commit -m "フェーズ '$PHASE_NAME' をphase.ymlに追加しました"
 
-    - name: リポジトリに変更をプッシュ
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
         # 変更をプッシュ
         git push origin HEAD
 
