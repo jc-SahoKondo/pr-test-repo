@@ -1,58 +1,51 @@
-name: Sync Issue Labels
+name: Label From Linked Issue
 
 on:
   issues:
     types: [opened, edited]
 
 jobs:
-  sync-labels:
+  add-labels:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v3
+    - name: Check out repository
+      uses: actions/checkout@v3
 
-      - name: Extract linked issue
-        id: extract_issue
-        run: |
-          ISSUE_BODY="${{ github.event.issue.body }}"
-          LINKED_ISSUE=$(echo "$ISSUE_BODY" | grep -oP '#\d+')
-          echo "Linked issue: $LINKED_ISSUE"
+    - name: Extract issue links and get labels
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const issue = context.payload.issue;
+          const body = issue.body;
 
-          if [ -z "$LINKED_ISSUE" ]; then
-            echo "No linked issue found. Exiting..."
-            exit 0
-          fi
+          // 正規表現を使って本文からissueリンクを抽出
+          const issueLinks = [...body.matchAll(/#(\d+)/g)];
+          if (issueLinks.length === 0) {
+            return;
+          }
 
-          # リンクされたIssue番号をEnvironment Fileに保存
-          echo "linked_issue_number=${LINKED_ISSUE:1}" >> $GITHUB_ENV
+          const labelsToAdd = new Set();
+          
+          // 各リンクされたissueのラベルを取得
+          for (const link of issueLinks) {
+            const linkedIssueNumber = link[1];
+            const { data: linkedIssue } = await github.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: linkedIssueNumber,
+            });
 
-      - name: Get linked issue labels
-        id: get_labels
-        run: |
-          LINKED_ISSUE_NUMBER=${{ env.linked_issue_number }}
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/$LINKED_ISSUE_NUMBER")
+            // すべてのラベルをセットに追加
+            linkedIssue.labels.forEach(label => labelsToAdd.add(label.name));
+          }
 
-          LABELS=$(echo "$RESPONSE" | jq -r '.labels[].name')
-          echo "Labels: $LABELS"
-
-          if [ -z "$LABELS" ]; then
-            echo "No labels found for the linked issue. Exiting..."
-            exit 0
-          fi
-
-          # ラベルリストをクリーンアップして環境ファイルに書き込む
-          CLEANED_LABELS=$(echo "$LABELS" | sed 's/"/\\"/g')  # エスケープ処理
-          echo "labels=[\"$(echo "$CLEANED_LABELS" | tr '\n' ',' | sed 's/,$//')\"]" >> $GITHUB_ENV
-
-      - name: Add labels to the current issue
-        run: |
-          LABELS=${{ env.labels }}
-          ISSUE_NUMBER=${{ github.event.issue.number }}
-
-          # 正しいJSON形式にエスケープされたラベルを使用して、リクエストを送信
-          curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER/labels \
-            -d "{\"labels\": $LABELS}"
+          // 現在のissueにラベルを追加
+          if (labelsToAdd.size > 0) {
+            await github.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: Array.from(labelsToAdd),
+            });
+          }
