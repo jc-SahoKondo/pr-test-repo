@@ -13,7 +13,7 @@ body:
       required: false
   
   - type: input
-    id: ref issue
+    id: ref-issue
     attributes:
       label: マージ先
       description: マージ先のIssue番号を入力してください
@@ -23,7 +23,7 @@ body:
       required: true
 
   - type: input
-    id: ref ticket
+    id: ref-ticket
     attributes:
       label: backlog
       description: backlogのリンクを入力してください
