@@ -1,0 +1,89 @@
+name: Issue to PR Automation
+
+on:
+  issues:
+    types: [labeled]
+    # 「parent issues」ラベルが追加された時に発火
+    filters:
+      label:
+        include: ["parent issues"]
+
+jobs:
+  issue-to-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: リポジトリをチェックアウト
+      uses: actions/checkout@v3
+
+    - name: GitHub CLIの設定
+      uses: actions/setup-node@v3
+      with:
+        node-version: '14'
+    
+    - name: Issue情報を取得
+      id: get_issue_data
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issueNumber = context.issue.number;
+          const issue = await github.rest.issues.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNumber
+          });
+
+          // 「parent issues」ラベルを除いたラベルを取得
+          const labels = issue.data.labels
+            .map(label => label.name)
+            .filter(label => label !== "parent issues");
+          
+          const milestone = issue.data.milestone ? issue.data.milestone.title : null;
+          const issueTitle = issue.data.title;
+          const issueBody = issue.data.body;
+
+          return { issueNumber, labels, milestone, issueTitle, issueBody };
+
+    - name: developブランチをチェックアウト
+      run: |
+        git checkout develop
+        git pull origin develop
+
+    - name: 新規ブランチを作成
+      id: create_branch
+      run: |
+        ISSUE_NUMBER=${{ steps.get_issue_data.outputs.issueNumber }}
+        ISSUE_TITLE="${{ steps.get_issue_data.outputs.issueTitle }}"
+
+        # ブランチ名を issue番号_issue名 に基づいて作成
+        BRANCH_NAME="#${ISSUE_NUMBER}_${ISSUE_TITLE// /_}"
+        git checkout -b "$BRANCH_NAME"
+        git push origin "$BRANCH_NAME"
+
+        echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
+
+    - name: プルリクエストを作成
+      id: create_pr
+      run: |
+        BRANCH_NAME=${{ steps.create_branch.outputs.branch_name }}
+        ISSUE_NUMBER=${{ steps.get_issue_data.outputs.issueNumber }}
+        ISSUE_TITLE="${{ steps.get_issue_data.outputs.issueTitle }}"
+        LABELS=$(echo "${{ steps.get_issue_data.outputs.labels }}" | sed 's/,/ /g')
+        MILESTONE=${{ steps.get_issue_data.outputs.milestone }}
+
+        # プルリクエストを作成。ベースブランチはdevelop
+        PR_RESPONSE=$(gh pr create --head "$BRANCH_NAME" --base develop --title "【DEV環境】 #${ISSUE_TITLE}" --body "DEV環境へのPRです。 #${ISSUE_NUMBER}" --label "$LABELS" --milestone "$MILESTONE")
+
+        # プルリクエスト番号を取得
+        PR_NUMBER=$(echo "$PR_RESPONSE" | grep -oP '(?<=#)\d+')
+        echo "pr_number=$PR_NUMBER" >> $GITHUB_ENV
+
+    - name: IssueにPR番号を追加
+      run: |
+        ISSUE_NUMBER=${{ steps.get_issue_data.outputs.issueNumber }}
+        ISSUE_BODY="${{ steps.get_issue_data.outputs.issueBody }}"
+        PR_NUMBER=${{ steps.create_pr.outputs.pr_number }}
+
+        # Issue本文の「dev: 」の後にPR番号（#123の形式）を追加
+        UPDATED_BODY=$(echo "$ISSUE_BODY" | sed "s/- dev:/- dev: #${PR_NUMBER}/")
+        gh issue edit $ISSUE_NUMBER --body "$UPDATED_BODY"
