@@ -1,4 +1,4 @@
-name: Issue to PR Automation
+name: 月対応issue作成時、新規ブランチとdevへのPR作成
 
 on:
   issues:
@@ -44,10 +44,14 @@ jobs:
 
           return { issueNumber, labels, milestone, issueTitle, issueBody };
 
+    - name: リモートのブランチをフェッチ
+      run: |
+        git fetch origin
+
     - name: developブランチをチェックアウト
       run: |
-        git checkout develop
-        git pull origin develop
+        git checkout origin/develop
+        git checkout -b develop
 
     - name: 新規ブランチを作成
       id: create_branch
